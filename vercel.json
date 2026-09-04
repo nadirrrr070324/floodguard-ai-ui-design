@@ -10,7 +10,7 @@
     }
   },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "https://floodguard-api.onrender.com/api/$1" }
+    { "source": "/api/(.*)", "destination": "https://floodguard-portal-api.onrender.com/api/$1" }
   ],
   "headers": [
     {

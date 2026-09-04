@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: floodguard-api
+    name: floodguard-portal-api
     runtime: node
     plan: free
     buildCommand: cd backend && npm install
@@ -8,7 +8,5 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 4000
     healthCheckPath: /api/health
     autoDeploy: true
