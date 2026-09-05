@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Radio, BatteryMedium, BatteryWarning, Wifi, WifiOff, Satellite, Sun, Zap, PhoneCall, BellRing, CheckCircle2, TriangleAlert } from "lucide-react";
+import { Radio, BatteryMedium, Wifi, WifiOff, Satellite, Sun, Zap, PhoneCall, BellRing, CheckCircle2, TriangleAlert } from "lucide-react";
 import { get, type Siren } from "@/lib/api";
 
 const statusMeta: Record<Siren["status"], { label: string; cls: string; bar: string }> = {

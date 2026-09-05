@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { MapContainer, TileLayer, Marker, Polygon, Popup, Tooltip, useMap } from "react-leaflet";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
-import { Droplets, TrendingUp, TrendingDown, Minus, RefreshCw, Users, Map as MapIcon, Radio, Layers } from "lucide-react";
+import { Droplets, TrendingUp, TrendingDown, Minus, RefreshCw, Users, Map as MapIcon, Radio, Layers, ExternalLink } from "lucide-react";
 import { get, type District, type WaterLevel, type FloodZone, type Siren } from "@/lib/api";
+import { openInGoogleMaps, type GoogleMapType } from "@/lib/mapLayers";
+import { FloodMap, type FloodMarker, type FloodPolygon } from "@/components/FloodMap";
+import { FloodMonitorPanel } from "@/components/FloodMonitorPanel";
 
 const statusColor: Record<string, string> = {
   danger: "#dc2626",
@@ -31,52 +31,6 @@ const sirenColor: Record<string, string> = {
   maintenance: "#64748b",
 };
 
-function makeIcon(color: string, active = false) {
-  return L.divIcon({
-    className: "",
-    html: `<div style="
-      width: ${active ? 22 : 16}px; height: ${active ? 22 : 16}px;
-      border-radius: 9999px; background: ${color};
-      border: 3px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-      ${active ? "outline: 3px solid rgba(0,0,0,0.25);" : ""}
-      "></div>`,
-    iconSize: [22, 22],
-    iconAnchor: [11, 11],
-  });
-}
-
-function makeSirenIcon(color: string, alarmed: boolean) {
-  return L.divIcon({
-    className: "",
-    html: `<div style="
-      width: 24px; height: 24px; border-radius: 9999px; background: ${color};
-      border: 3px solid #fff; box-shadow: 0 2px 10px rgba(0,0,0,0.45);
-      display:flex; align-items:center; justify-content:center;
-      ${alarmed ? "animation: pulse 1s infinite;" : ""}
-      ">
-      <svg viewBox="0 0 24 24" width="12" height="12" fill="#fff"><path d="M3 11h2v2H3zM7 6h2v12H7zM11 3h2v18h-2zM15 8h2v8h-2zM19 4h2v16h-2z"/></svg>
-    </div>`,
-    iconSize: [24, 24],
-    iconAnchor: [12, 12],
-  });
-}
-
-function FlyTo({ pos }: { pos: [number, number] | null }) {
-  const map = useMap();
-  useEffect(() => {
-    if (pos) map.flyTo(pos, 8, { duration: 0.8 });
-  }, [pos, map]);
-  return null;
-}
-
-function FitToZone({ ring }: { ring: [number, number][] | null }) {
-  const map = useMap();
-  useEffect(() => {
-    if (ring) map.flyToBounds(L.polygon(ring).getBounds(), { padding: [50, 50], maxZoom: 9, duration: 0.8 });
-  }, [ring, map]);
-  return null;
-}
-
 const Trend = ({ t }: { t: WaterLevel["trend"] }) =>
   t === "rising" ? (
     <span className="inline-flex items-center gap-1 text-red-600">
@@ -100,6 +54,7 @@ export function LiveMapPage() {
   const [zones, setZones] = useState<FloodZone[]>([]);
   const [sirens, setSirens] = useState<Siren[]>([]);
   const [filter, setFilter] = useState<"all" | "normal" | "warning" | "danger">("all");
+  const [mapType, setMapType] = useState<GoogleMapType>("satellite");
   const [showZones, setShowZones] = useState(true);
   const [showSirens, setShowSirens] = useState(true);
   const [tab, setTab] = useState<Tab>("gauges");
@@ -128,11 +83,9 @@ export function LiveMapPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const byDistrict = useMemo(() => new Map(levels.map((l) => [l.districtId, l])), [levels]);
   const distMap = useMemo(() => new Map(districts.map((d) => [d.id, d])), [districts]);
 
   const visible = levels.filter((l) => filter === "all" || l.statusCustom === filter);
-  const selectedDist = selected ? distMap.get(selected.districtId) : undefined;
 
   const counts = {
     all: levels.length,
@@ -158,13 +111,103 @@ export function LiveMapPage() {
     setZoneRing(z.ring);
   };
 
+  const gaugeMarkers: FloodMarker[] = visible
+    .map((l): FloodMarker | null => {
+      const d = distMap.get(l.districtId);
+      if (!d) return null;
+      const isSel = selected?.districtId === l.districtId;
+      return {
+        id: `g-${l.districtId}`,
+        position: [d.latitude, d.longitude],
+        color: statusColor[l.statusCustom],
+        size: isSel ? 22 : 16,
+        active: isSel,
+        label: d.name,
+        onClick: () => pickGauge(l),
+        popup: (
+          <div className="text-sm">
+            <p className="font-bold">
+              {d.name} · {l.river}
+            </p>
+            <p>Water level: {l.level.toFixed(2)} m</p>
+            <p className="font-bold" style={{ color: statusColor[l.statusCustom] }}>
+              {statusLabel[l.statusCustom]}
+            </p>
+            <button
+              onClick={() => openInGoogleMaps(d.latitude, d.longitude, d.name)}
+              className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-water hover:underline"
+            >
+              View in Google Maps <ExternalLink className="h-3 w-3" />
+            </button>
+          </div>
+        ),
+      };
+    })
+    .filter((m): m is FloodMarker => m !== null);
+
+  const sirenMarkers: FloodMarker[] = showSirens
+    ? sirens.map((s) => ({
+        id: `s-${s.id}`,
+        position: [s.latitude, s.longitude],
+        color: sirenColor[s.status],
+        size: 24,
+        pulse: s.alarmed,
+        symbol: "siren",
+        label: `Siren · ${s.villageName}`,
+        onClick: () => {
+          setFlyLabel([s.latitude, s.longitude]);
+          setZoneRing(null);
+        },
+        popup: (
+          <div className="text-sm">
+            <p className="font-bold">Siren · {s.villageName}</p>
+            <p className="capitalize">Status: {s.status.replace("_", " ")}</p>
+            <p>Battery: {s.batteryPct}%</p>
+            <p>Network: {s.network === "none" ? "No mobile network — SMS fallback ready" : s.network}</p>
+            <p className="mt-1 flex items-center gap-1 text-xs text-slate-400">
+              {s.phone}
+              <button
+                onClick={() => openInGoogleMaps(s.latitude, s.longitude, `${s.villageName} siren`)}
+                className="inline-flex items-center gap-0.5 font-semibold text-water hover:underline"
+              >
+                Maps <ExternalLink className="h-3 w-3" />
+              </button>
+            </p>
+          </div>
+        ),
+      }))
+    : [];
+
+  const zonePolygons: FloodPolygon[] = showZones
+    ? zones.map((z) => ({
+        id: z.id,
+        ring: z.ring,
+        color: zoneColor[z.severity],
+        fillOpacity: selectedZone?.id === z.id ? 0.5 : 0.28,
+        selected: selectedZone?.id === z.id,
+        label: z.name,
+        onClick: () => pickZone(z),
+        popup: (
+          <div className="text-sm">
+            <p className="font-bold">{z.name}</p>
+            <p className="capitalize">
+              Severity: <span className="font-bold" style={{ color: zoneColor[z.severity] }}>{z.severity}</span>
+            </p>
+            <p>Affected: {z.affectedPopulation.toLocaleString()} people</p>
+            <p>Area: {z.areaSqKm} km²</p>
+            <p>Villages: {z.affectedVillages.join(", ")}</p>
+          </div>
+        ),
+      }))
+    : [];
+
   return (
     <div className="bg-white">
       <div className="border-b border-slate-200 bg-slate-50">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-6">
           <div>
             <h1 className="text-2xl font-extrabold text-navy">Live Flood & River Map</h1>
-            <p className="text-sm text-slate-500">Real-time flood inundation zones, river gauges and village siren units</p>
+            <p className="text-sm text-slate-500">Real-time Google Maps satellite view of flood inundation, river-flow gauges and village siren units</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {(["all", "normal", "warning", "danger"] as const).map((k) => (
@@ -205,98 +248,17 @@ export function LiveMapPage() {
 
       <div className="flex flex-col gap-6 px-4 py-6 lg:flex-row">
         {/* Map */}
-        <div className="min-h-[420px] flex-1 overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
-          <MapContainer center={[25.8, 91.8]} zoom={6} scrollWheelZoom className="z-0 h-[560px] w-full lg:h-[680px]">
-            <TileLayer
-              attribution="&copy; OpenStreetMap contributors"
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-
-            {flyLabel && <FlyTo pos={flyLabel} />}
-            {zoneRing && <FitToZone ring={zoneRing} />}
-
-            {/* Flood inundation zones */}
-            {showZones &&
-              zones.map((z) => (
-                <Polygon
-                  key={z.id}
-                  positions={z.ring}
-                  pathOptions={{
-                    color: zoneColor[z.severity],
-                    fillColor: zoneColor[z.severity],
-                    fillOpacity: selectedZone?.id === z.id ? 0.5 : 0.28,
-                    weight: 2,
-                    opacity: 0.9,
-                  }}
-                  eventHandlers={{ click: () => pickZone(z) }}
-                >
-                  <Tooltip direction="center" opacity={1}>
-                    <span className="font-bold">{z.name}</span>
-                  </Tooltip>
-                  <Popup>
-                    <div className="text-sm">
-                      <p className="font-bold">{z.name}</p>
-                      <p className="capitalize">Severity: <span className="font-bold" style={{ color: zoneColor[z.severity] }}>{z.severity}</span></p>
-                      <p>Affected: {z.affectedPopulation.toLocaleString()} people</p>
-                      <p>Area: {z.areaSqKm} km²</p>
-                      <p>Villages: {z.affectedVillages.join(", ")}</p>
-                    </div>
-                  </Popup>
-                </Polygon>
-              ))}
-
-            {/* Village siren units */}
-            {showSirens &&
-              sirens.map((s) => (
-                <Marker
-                  key={s.id}
-                  position={[s.latitude, s.longitude]}
-                  icon={makeSirenIcon(sirenColor[s.status], s.alarmed)}
-                >
-                  <Tooltip direction="top" offset={[0, -12]} opacity={1}>
-                    <span className="font-bold">Siren · {s.villageName}</span>
-                  </Tooltip>
-                  <Popup>
-                    <div className="text-sm">
-                      <p className="font-bold">Siren · {s.villageName}</p>
-                      <p className="capitalize">Status: {s.status.replace("_", " ")}</p>
-                      <p>Battery: {s.batteryPct}%</p>
-                      <p>Network: {s.network === "none" ? "No mobile network — SMS fallback ready" : s.network}</p>
-                      <p className="mt-1 text-xs text-slate-400">{s.phone}</p>
-                    </div>
-                  </Popup>
-                </Marker>
-              ))}
-
-            {/* River gauge markers */}
-            {visible.map((l) => {
-              const d = distMap.get(l.districtId);
-              if (!d) return null;
-              const isSel = selected?.districtId === l.districtId;
-              return (
-                <Marker
-                  key={l.districtId}
-                  position={[d.latitude, d.longitude]}
-                  icon={makeIcon(statusColor[l.statusCustom], isSel)}
-                  eventHandlers={{ click: () => pickGauge(l) }}
-                >
-                  <Tooltip direction="top" offset={[0, -12]} opacity={1}>
-                    <span className="font-bold">{d.name}</span>
-                  </Tooltip>
-                  <Popup>
-                    <div className="text-sm">
-                      <p className="font-bold">{d.name} · {l.river}</p>
-                      <p>Water level: {l.level.toFixed(2)} m</p>
-                      <p className="font-bold" style={{ color: statusColor[l.statusCustom] }}>
-                        {statusLabel[l.statusCustom]}
-                      </p>
-                    </div>
-                  </Popup>
-                </Marker>
-              );
-            })}
-          </MapContainer>
-        </div>
+        <FloodMap
+          className="min-h-[420px] flex-1 overflow-hidden rounded-2xl border border-slate-200 shadow-sm"
+          center={[25.8, 91.8]}
+          zoom={6}
+          mapType={mapType}
+          onMapTypeChange={setMapType}
+          markers={[...gaugeMarkers, ...sirenMarkers]}
+          polygons={zonePolygons}
+          flyTo={flyLabel}
+          fitToRing={zoneRing}
+        />
 
         {/* Side panel */}
         <aside className="w-full shrink-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm lg:w-96">
@@ -502,6 +464,11 @@ export function LiveMapPage() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Flood & river flow monitoring — connected to the flood monitoring system */}
+      <div className="border-t border-slate-200 bg-slate-50 pt-8">
+        <FloodMonitorPanel />
       </div>
     </div>
   );

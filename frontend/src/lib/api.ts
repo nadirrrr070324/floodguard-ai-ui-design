@@ -66,6 +66,17 @@ export interface Alert {
   createdAt: string;
 }
 
+export interface WeatherForecastDay {
+  date: string;
+  weekday: string;
+  condition: string;
+  weatherCode: number;
+  tempMax: number;
+  tempMin: number;
+  rainMm: number;
+  rainProbPct: number;
+}
+
 export interface WeatherRow {
   districtId: string;
   district_name: string;
@@ -74,6 +85,9 @@ export interface WeatherRow {
   rainfallMm: number;
   windKmh: number;
   condition: string;
+  source?: "open-meteo" | "builtin";
+  updatedAt?: string;
+  forecast?: WeatherForecastDay[];
 }
 
 export interface Shelter {
@@ -199,4 +213,49 @@ export interface ComputedRoute {
   steps: RouteStep[];
   via: [number, number][];
   found: boolean;
+}
+
+// Flood & river flow monitoring — gauging stations reported by the connected
+// flood monitoring system (water level in metres + discharge in m³/s).
+export interface FloodMonitorStation {
+  id: string;
+  stationCode: string;
+  districtId: string;
+  district_name: string;
+  river: string;
+  latitude: number;
+  longitude: number;
+  waterLevel: number;
+  gaugeZero: number;
+  normalLevel: number;
+  warningLevel: number;
+  dangerLevel: number;
+  flow: number;
+  averageFlow: number;
+  maxFlow: number;
+  trend: WaterLevel["trend"];
+  stage: "normal" | "warning" | "danger";
+  sensor: "online" | "battery_low" | "offline";
+  batteryPct: number;
+  network: "cellular" | "satellite";
+  lastUpdated: string;
+}
+
+export interface FloodMonitor {
+  network: string;
+  source: "remote" | "builtin" | "builtin-fallback";
+  statusOnline: boolean;
+  stations: FloodMonitorStation[];
+  updatedAt: string;
+}
+
+export interface MonitorHealth {
+  status: "connected" | "degraded";
+  system: string;
+  source: FloodMonitor["source"];
+  latencyMs: number;
+  stations: number;
+  stationsOnline: number;
+  lastUpdated: string;
+  remoteUrl: boolean;
 }

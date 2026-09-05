@@ -1,6 +1,8 @@
 import express from "express";
 import cors from "cors";
 import { db } from "./data.js";
+import { getFloodMonitor, getStationMonitor, getMonitorHealth } from "./fms.js";
+import { getWeather, getWeatherForecast, getWeatherHealth } from "./weather.js";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -37,9 +39,24 @@ app.get("/api/alerts", (req, res) => {
 
 app.get("/api/alerts/active", (_req, res) => res.json(db.alerts({ status: "active" })));
 
-// Weather readings per district
-app.get("/api/weather", (req, res) => {
-  res.json(db.weather({ districtId: req.query.districtId }));
+// Live weather per district from the Open-Meteo meteorological federation
+// (current conditions + 5-day forecast embedded per row).
+app.get("/api/weather", async (req, res) => {
+  res.json(await getWeather({ districtId: req.query.districtId }));
+});
+
+// 5-day forecast — one district or the whole network.
+app.get("/api/weather/forecast", async (req, res) => {
+  const result = await getWeatherForecast({ districtId: req.query.districtId });
+  if (!result) {
+    return res.status(404).json({ error: { code: "NOT_FOUND", message: "District not found" } });
+  }
+  res.json(result);
+});
+
+// Connectivity / health of the link to the weather federation.
+app.get("/api/weather/health", async (_req, res) => {
+  res.json(await getWeatherHealth());
 });
 
 // Relief shelters
@@ -129,6 +146,25 @@ app.get("/api/contacts", (_req, res) => res.json(db.contacts()));
 // Safety guidelines
 app.get("/api/guidelines", (_req, res) => res.json(db.guidelines()));
 
+
+// Flood & river-flow monitoring network (gauging stations: level + discharge).
+app.get("/api/flood-monitor", async (_req, res) => {
+  res.json(await getFloodMonitor());
+});
+
+// Single gauging station telemetry (id, stationCode or districtId).
+app.get("/api/flood-monitor/stations/:station", async (req, res) => {
+  const station = await getStationMonitor(req.params.station);
+  if (!station) {
+    return res.status(404).json({ error: { code: "NOT_FOUND", message: "Station not found" } });
+  }
+  res.json(station);
+});
+
+// Connectivity / health of the link to the flood monitoring system.
+app.get("/api/monitor/health", async (_req, res) => {
+  res.json(await getMonitorHealth());
+});
 
 // Top flood-risk districts
 app.get("/api/top-risks", (_req, res) => res.json(db.topRisks()));

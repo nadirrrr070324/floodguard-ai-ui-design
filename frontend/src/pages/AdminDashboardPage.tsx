@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MapContainer, TileLayer, Polygon, Circle, Tooltip, Popup } from "react-leaflet";
-import L from "leaflet";
+import { MapContainer, Polygon, Circle, Tooltip, Popup } from "react-leaflet";
 import {
   ShieldCheck, Plus, Trash2, Megaphone, Activity, MapPin, Radio, Users, RefreshCw,
   TriangleAlert, Building2, Pencil,
@@ -9,6 +8,9 @@ import { get, post } from "@/lib/api";
 import type { FloodZone, Siren, Shelter } from "@/lib/api";
 import type { RiskLevel } from "@/lib/geo";
 import { RISK_META } from "@/lib/geo";
+import { type GoogleMapType } from "@/lib/mapLayers";
+import { FallbackTileLayer } from "@/components/FallbackTileLayer";
+import { MapTypeSwitcher } from "@/components/MapTypeSwitcher";
 
 const zoneColor: Record<FloodZone["severity"], string> = {
   critical: "#dc2626",
@@ -39,6 +41,7 @@ export function AdminDashboardPage() {
   const [shelters, setShelters] = useState<Shelter[]>([]);
   const [users, setUsers] = useState<SafetyUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [mapType, setMapType] = useState<GoogleMapType>("satellite");
   const [safetyFilter, setSafetyFilter] = useState<"all" | SafetyUser["statusCustom"]>("all");
 
   // create zone form
@@ -246,8 +249,9 @@ export function AdminDashboardPage() {
                 <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} /> Refresh
               </button>
             </div>
-            <MapContainer center={[26.0, 92.0]} zoom={6} scrollWheelZoom className="z-0 h-[480px] w-full">
-              <TileLayer attribution="&copy; OpenStreetMap contributors" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+            <MapContainer center={[26.0, 92.0]} zoom={6} scrollWheelZoom className="z-0 h-[480px] w-full lg:h-[600px]">
+              <FallbackTileLayer type={mapType} />
+              <MapTypeSwitcher value={mapType} onChange={setMapType} />
               {zones.map((z) => (
                 <Polygon
                   key={z.id}

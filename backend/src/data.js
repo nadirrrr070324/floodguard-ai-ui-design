@@ -31,6 +31,37 @@ const LEVELS = [
   { districtId: "d12", river: "Mithi", level: 12.3, normal: 11.0, warning: 11.8, danger: 12.5, trend: "steady" },
 ];
 
+// Long-term mean (average) discharge used as the "flow vs normal" baseline.
+// Values are indicative of monsoon-season gauging stations for each river.
+const FLOW_REF = {
+  Brahmaputra: { avgFlow: 19500, maxFlow: 72000 },
+  Siang: { avgFlow: 8200, maxFlow: 21000 },
+  Ganga: { avgFlow: 11200, maxFlow: 42000 },
+  Gandak: { avgFlow: 2100, maxFlow: 7800 },
+  Barak: { avgFlow: 1900, maxFlow: 6400 },
+  Krishna: { avgFlow: 1600, maxFlow: 8800 },
+  Mahanadi: { avgFlow: 2100, maxFlow: 14700 },
+  Mithi: { avgFlow: 260, maxFlow: 2300 },
+};
+
+// CWC-style station codes for the river gauging stations feeding the network.
+const STATION_CODES = {
+  d1: "GNG-PTDM",
+  d2: "BRH-GWHT",
+  d3: "BRH-DBRH",
+  d4: "GDK-MZPR",
+  d5: "BRK-SLCH",
+  d6: "SGN-JNUI",
+  d7: "GNG-DHDN",
+  d9: "KRS-VJWD",
+  d10: "MHN-BBSR",
+  d12: "MTH-MUMB",
+};
+
+function stageOf(l) {
+  return l.level >= l.danger ? "danger" : l.level >= l.warning ? "warning" : "normal";
+}
+
 const ALERTS = [
   {
     id: "a1", title: "Severe Flood Alert — Guwahati", severity: "critical", status: "active",
@@ -425,6 +456,68 @@ export const db = {
 
   floodzones: () =>
     FLOODZONES.map((z) => ({ ...z, district_name: district(z.districtId).name })),
+
+  // Flood & river-flow monitoring network — gauging stations reporting live
+  // water level (m) and discharge/flow (m³/s) with threshold bands + telemetry.
+  floodMonitor: () => {
+    const time = new Date();
+    const stations = LEVELS.map((l, i) => {
+      const d = district(l.districtId);
+      const fr = FLOW_REF[l.river] || { avgFlow: 400, maxFlow: 1500 };
+      const flowFactor = Math.max(0.55, l.level / (l.normal || 1));
+      const flow = Math.round(fr.avgFlow * flowFactor * (0.94 + Math.random() * 0.12));
+      const batteryPct = 48 + Math.floor(Math.random() * 52);
+      const batteryLow = batteryPct < 30;
+      const sensor = batteryLow ? "battery_low" : "online";
+      const station = STATION_CODES[l.districtId] || `${l.river.slice(0, 3).toUpperCase()}-${l.districtId.toUpperCase()}`;
+      return {
+        id: `st${i + 1}`,
+        stationCode: station,
+        districtId: l.districtId,
+        district_name: d.name,
+        river: l.river,
+        latitude: d.latitude,
+        longitude: d.longitude,
+        waterLevel: jitter(l.level, 2),
+        gaugeZero: Math.round((l.normal - 4.2) * 10) / 10,
+        normalLevel: l.normal,
+        warningLevel: l.warning,
+        dangerLevel: l.danger,
+        flow,
+        averageFlow: fr.avgFlow,
+        maxFlow: fr.maxFlow,
+        trend: l.trend,
+        stage: stageOf(l),
+        sensor,
+        batteryPct,
+        network: batteryLow ? "satellite" : "cellular",
+        lastUpdated: new Date(time.getTime() - Math.floor(Math.random() * 5) * 60 * 1000).toISOString(),
+      };
+    });
+    return {
+      network: "National Flood & River Flow Monitoring Network",
+      source: "builtin",
+      statusOnline: true,
+      stations,
+      updatedAt: time.toISOString(),
+    };
+  },
+
+  // Health / connectivity summary for the flood monitoring system link.
+  monitorHealth: () => {
+    const mon = db.floodMonitor();
+    const stations = mon.stations;
+    return {
+      status: stations.some((s) => s.sensor === "battery_low") ? "degraded" : "connected",
+      system: mon.network,
+      source: mon.source,
+      latencyMs: Math.round(40 + Math.random() * 60),
+      stations: stations.length,
+      stationsOnline: stations.filter((s) => s.sensor === "online").length,
+      lastUpdated: mon.updatedAt,
+      remoteUrl: false,
+    };
+  },
 
   // Safe-zone database for offline navigation (shelters, hospitals, etc.)
   safezones: () =>

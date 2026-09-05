@@ -195,19 +195,31 @@ export function EmergencyAppPage() {
   const startTracking = useCallback(() => {
     setGpsBusy(true);
     setGpsError(null);
+    
     if (!("geolocation" in navigator)) {
       setGpsError("Geolocation is not supported on this device/browser.");
       setGpsBusy(false);
       return;
     }
+    
     const ok = (pos: GeolocationPosition) => {
       const p = { lat: pos.coords.latitude, lng: pos.coords.longitude, source: "gps" as const };
       setPosition(p);
       setGpsBusy(false);
+      setGpsError(null);
       assess(p.lat, p.lng, "gps");
+      toast("Location tracking enabled");
     };
     const err = (e: GeolocationPositionError) => {
-      setGpsError(e.message || "Unable to fetch location.");
+      let errorMsg = "Unable to fetch location.";
+      if (e.code === e.PERMISSION_DENIED) {
+        errorMsg = "Location permission denied. Please enable location access in your browser settings.";
+      } else if (e.code === e.POSITION_UNAVAILABLE) {
+        errorMsg = "Location information is unavailable.";
+      } else if (e.code === e.TIMEOUT) {
+        errorMsg = "Location request timed out.";
+      }
+      setGpsError(errorMsg);
       setGpsBusy(false);
     };
     const id = navigator.geolocation.watchPosition(ok, err, {
@@ -219,9 +231,12 @@ export function EmergencyAppPage() {
   }, [assess]);
 
   const stopTracking = useCallback(() => {
-    if (watchId.current !== null) navigator.geolocation.clearWatch(watchId.current);
-    watchId.current = null;
+    if (watchId.current !== null) {
+      navigator.geolocation.clearWatch(watchId.current);
+      watchId.current = null;
+    }
     setGpsBusy(false);
+    // Don't clear the error immediately, let the user see what happened
   }, []);
 
   const applyPrefs = (p: AppPrefs) => {
@@ -230,11 +245,16 @@ export function EmergencyAppPage() {
     setPrefs(p);
   };
 
-  const toggleTracking = (on: boolean) => {
+  const toggleTracking = async (on: boolean) => {
     applyPrefs({ ...prefs, tracking: on });
-    if (on) startTracking();
-    else stopTracking();
-    toast(on ? "Location tracking enabled" : "Location tracking disabled");
+    if (on) {
+      // Clear previous error before starting
+      setGpsError(null);
+      await startTracking();
+    } else {
+      stopTracking();
+      toast("Location tracking disabled");
+    }
   };
 
   const nameRef = useRef(name);
@@ -257,6 +277,7 @@ export function EmergencyAppPage() {
   useEffect(() => {
     if (booted.current) return;
     booted.current = true;
+    
     if (prefs.tracking) startTracking();
     else if (position) assess(position.lat, position.lng, position.source);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -541,9 +562,39 @@ export function EmergencyAppPage() {
             </div>
           )}
           {gpsError && (
-            <p className="mt-2 flex items-center gap-1.5 rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
-              <TriangleAlert className="h-3.5 w-3.5" /> {gpsError}
-            </p>
+            <div className="mt-2 flex items-start gap-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+              <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <div className="flex-1">
+                <p>{gpsError}</p>
+                {gpsError.includes("permission denied") && (
+                  <button
+                    onClick={() => {
+                      setGpsError(null);
+                      // Try to request permission again by attempting to get current position
+                      navigator.geolocation.getCurrentPosition(
+                        (pos) => {
+                          const p = { lat: pos.coords.latitude, lng: pos.coords.longitude, source: "gps" as const };
+                          setPosition(p);
+                          assess(p.lat, p.lng, "gps");
+                          toast("Location access granted!");
+                        },
+                        (e) => {
+                          if (e.code === e.PERMISSION_DENIED) {
+                            setGpsError("Permission still denied. Please enable location in browser settings.");
+                          } else {
+                            setGpsError(e.message || "Unable to fetch location.");
+                          }
+                        },
+                        { enableHighAccuracy: true, timeout: 10000 }
+                      );
+                    }}
+                    className="mt-1 text-xs font-bold underline hover:text-red-800"
+                  >
+                    Try again
+                  </button>
+                )}
+              </div>
+            </div>
           )}
           <p className="mt-3 border-t border-slate-100 pt-2 text-[11px] leading-relaxed text-slate-400">{GARAGE_NOTICE}</p>
         </div>

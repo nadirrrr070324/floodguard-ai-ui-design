@@ -1,7 +1,8 @@
-import { MapContainer, TileLayer, Polygon, Marker, Circle, Polyline, Popup } from "react-leaflet";
+import { MapContainer, Polygon, Marker, Circle, Polyline, Popup } from "react-leaflet";
 import L from "leaflet";
 import type { FloodZone, Shelter } from "@/lib/api";
 import { haversineKm } from "@/lib/geo";
+import { FallbackTileLayer } from "@/components/FallbackTileLayer";
 
 const zoneColor: Record<string, string> = { critical: "#dc2626", high: "#ea580c", moderate: "#f59e0b", low: "#16a34a" };
 
@@ -53,7 +54,7 @@ export function OfflineSafetyMap({ latitude, longitude, zones, shelters, riskLev
       scrollWheelZoom={false}
       attributionControl={false}
     >
-      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+      <FallbackTileLayer type="hybrid" />
       {/* Hazard zone */}
       {zones.map((z) => (
         <Polygon
