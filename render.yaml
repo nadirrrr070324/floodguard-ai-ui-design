@@ -3,7 +3,7 @@ services:
     name: floodguard-portal-api
     runtime: node
     plan: free
-    buildCommand: cd backend && npm install
+    buildCommand: npm install --prefix frontend && npm install --prefix backend
     startCommand: node backend/src/server.js
     envVars:
       - key: NODE_ENV
