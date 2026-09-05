@@ -131,9 +131,10 @@ function safeViaPoints(
   zones: FloodZone[]
 ): [number, number][] {
   const via: [number, number][] = [origin];
-  const hazards = [...roadblocks, ...rivercrossings].filter(
-    (h) => h.latitude !== undefined && h.longitude !== undefined
-  );
+  const hazards: { latitude: number; longitude: number }[] = [
+    ...roadblocks.map((h) => ({ latitude: h.latitude, longitude: h.longitude })),
+    ...rivercrossings.map((h) => ({ latitude: h.latitude, longitude: h.longitude })),
+  ];
   hazards.push(
     ...zones
       .filter((z) => z.severity === "critical" || z.severity === "high")
@@ -230,7 +231,7 @@ export function computeSafeRoute(
 ): ComputedRoute {
   const dest: [number, number] = [destination.latitude, destination.longitude];
   // Detour around hazards: build a set of via points optimised for safety.
-  let via = safeViaPoints(
+  const via = safeViaPoints(
     origin,
     dest,
     data.roadblocks,
@@ -244,7 +245,7 @@ export function computeSafeRoute(
    * an even more dangerous area — we prefer the direct bearing if no safe path).
    */
   let bestPenalty = Infinity;
-  let bestVia = via;
+
   for (let i = 0; i < via.length - 1; i++) {
     const segPenalty = hazardPenalty(midpoint(via[i], via[i + 1]), data.roadblocks, data.rivercrossings, data.zones);
     if (segPenalty < bestPenalty) bestPenalty = segPenalty;
