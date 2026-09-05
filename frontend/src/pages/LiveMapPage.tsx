@@ -248,17 +248,19 @@ export function LiveMapPage() {
 
       <div className="flex flex-col gap-6 px-4 py-6 lg:flex-row">
         {/* Map */}
-        <FloodMap
-          className="min-h-[420px] flex-1 overflow-hidden rounded-2xl border border-slate-200 shadow-sm"
-          center={[25.8, 91.8]}
-          zoom={6}
-          mapType={mapType}
-          onMapTypeChange={setMapType}
-          markers={[...gaugeMarkers, ...sirenMarkers]}
-          polygons={zonePolygons}
-          flyTo={flyLabel}
-          fitToRing={zoneRing}
-        />
+        <div className="min-h-[420px] flex-1 overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
+          <FloodMap
+            className="h-full w-full"
+            center={[25.8, 91.8]}
+            zoom={6}
+            mapType={mapType}
+            onMapTypeChange={setMapType}
+            markers={[...gaugeMarkers, ...sirenMarkers]}
+            polygons={zonePolygons}
+            flyTo={flyLabel}
+            fitToRing={zoneRing}
+          />
+        </div>
 
         {/* Side panel */}
         <aside className="w-full shrink-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm lg:w-96">
